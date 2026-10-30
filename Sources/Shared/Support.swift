@@ -114,6 +114,9 @@ enum Profile {
 
     static func normalize(_ input: [String: Any]) throws -> [String: Any] {
         var object = input
+        guard let listener = try JSONSerialization.jsonObject(with: Data(ConfigurationTemplates.sslocal.utf8)) as? [String: Any] else {
+            throw ControlError("内置 sslocal 模板无效。")
+        }
         let servers = object["servers"] as? [[String: Any]]
         guard object["server"] is String || servers?.isEmpty == false else {
             throw ControlError("配置缺少代理服务器。")
@@ -123,18 +126,15 @@ enum Profile {
                 throw ControlError("仅支持一个 redir 本地监听的客户端配置。")
             }
             var local = locals[0]
-            local["local_address"] = "127.0.0.1"
-            local["local_port"] = 59097
-            local["mode"] = "tcp_only"
+            local.merge(listener) { _, template in template }
             object["locals"] = [local]
         } else {
             guard object["protocol"] as? String == "redir" else {
                 throw ControlError("仅支持 redir 透明代理配置。")
             }
-            object["local_address"] = "127.0.0.1"
-            object["local_port"] = 59097
+            object.merge(listener) { _, template in template }
         }
-        object["mode"] = "tcp_only"
+        object["mode"] = listener["mode"]
         return object
     }
 
@@ -198,19 +198,6 @@ enum Runtime {
     static let event = directory.appendingPathComponent("recovery.json")
     static let legacyToken = "/var/run/climbover-pf.token"
     static let anchor = "com.apple/climbovergui"
-}
-
-enum PFConfiguration {
-    static func render(tableFile: URL) -> String {
-        // macOS pfctl requires the final rule to end with a newline.
-        """
-        table <direct_cidr> persist file "\(tableFile.path)"
-        rdr on lo0 inet proto tcp from any to ! <direct_cidr> -> 127.0.0.1 port 59097
-        pass out route-to (lo0 127.0.0.1) inet proto tcp from any to ! <direct_cidr> no state
-        pass in on lo0 inet proto tcp from any to 127.0.0.1 port 59097 no state
-
-        """
-    }
 }
 
 struct PublicStatus: Codable {

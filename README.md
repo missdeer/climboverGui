@@ -6,7 +6,7 @@ macOS 13+ 原生菜单栏代理控制器，使用 SwiftUI、AppKit、SMAppServic
 
 ## 构建准备
 
-需要 macOS 13+、Xcode Command Line Tools，以及启用了所需功能的 `sslocal`、CoreDNS 和 `obfs-local`。仓库仅包含 GUI 源码、脚本和图标；第三方可执行文件、代理服务器配置和本机网络数据由使用者准备。
+需要 macOS 13+、Xcode Command Line Tools，以及启用了所需功能的 `sslocal`、CoreDNS 和 `obfs-local`。仓库包含 GUI 源码、脚本、图标及配置模板；第三方可执行文件、代理服务器配置和本机网络数据由使用者准备。
 
 脚本当前约定将本仓库放在已有代理工作目录下：
 
@@ -18,13 +18,12 @@ workspace/
 ├── conf/              # redir 客户端 JSON 配置，支持子目录和 .conf/.json 扩展名
 ├── coredns/
 │   ├── coredns        # 与 Corefile 中插件兼容的 CoreDNS 可执行文件
-│   ├── Corefile
-│   └── domains.txt    # 以及 Corefile 引用的其他数据文件
+│   └── domains.txt    # DNS 屏蔽列表
 ├── direct_cidr.txt
 └── lan_cidr.txt
 ```
 
-`build.sh` 将三个可执行文件复制进应用包；服务器配置、Corefile 和 CIDR 数据继续从上级工作目录读取。默认 CoreDNS 不一定包含原项目使用的 ipset、blocklist 等插件，需要按实际 Corefile 选择兼容构建。配置和数据文件不随源码发布。
+`build.sh` 将三个可执行文件复制进应用包，并将 `Templates/` 中的 sslocal、CoreDNS、pf 模板及 DNS 分流数据编入二进制。CoreDNS 需要支持模板中的 blocklist、proxy、bogus 和 ipset 插件。节点配置、domains.txt 和 CIDR 数据继续从上级工作目录读取，不随源码发布；无需准备外部 Corefile。
 
 ## 构建与安装
 
@@ -47,9 +46,9 @@ open /Applications/ClimbOver.app
 
 - 点击菜单栏山脊图标，选择服务器，点击启动。首次安装/启用后台需要系统管理员批准；批准后启停、切换、状态查询和日志都通过 XPC 完成，不再弹 AppleScript 管理员密码框。
 - 服务器来自上级项目的 `conf/**/*.conf`、`conf/**/*.json`。只列出兼容的 redir 客户端配置。
-- 运行时使用副本，统一 TCP redir 监听 `127.0.0.1:59097`，保留链式代理与插件配置；原文件不修改。
+- 每次开始、切换或失败回退时，使用内置模板重新生成 `/var/run/climbover-gui/config.json`、`Corefile` 和 `pf.conf`，不复用上次遗留文件。sslocal 合并所选节点参数，统一 TCP redir 监听 `127.0.0.1:59097`，保留链式代理与插件配置；原文件不修改。
 - `sslocal`、CoreDNS 和 `obfs-local` 一起打包在 `Contents/Helpers` 中，构建时复制为真实文件，安装后的运行不依赖项目中的可执行文件或原始符号链接。`sslocal` 工作目录及子进程 `PATH` 指向包内 Helpers 目录，以便启动包内 `obfs-local`；已有配置中的旧绝对路径也自动映射到包内版本。其他自定义插件保留原路径行为。
-- CoreDNS 的可执行文件来自应用包，Corefile、domains.txt 和工作目录仍来自项目的 coredns 目录。服务器配置、CIDR 文件同样继续从项目目录读取。子进程通过原生 `posix_spawn` 创建独立会话，不依赖终端或 `nohup`。
+- CoreDNS 从运行目录加载即时生成的 Corefile，仅监听 `127.0.0.1:53`；屏蔽列表通过绝对路径读取项目的 `coredns/domains.txt`。模板保留现有上游 DNS、国内域名直连、bogus 和 Apple/Bilibili 分流行为。`Templates/DNS/` 保存迁移时的分流数据快照，修改后需重新构建。子进程通过原生 `posix_spawn` 创建独立会话，不依赖终端或 `nohup`。
 - 代理开启时选择其他服务器会先保存旧节点的运行配置，再连接新节点。新节点启动或连通性检查失败时自动恢复旧节点；旧节点也失败时停止代理并恢复原 DNS。原配置文件后来被修改或删除也不影响已保存的回退副本。
 - 配置解析、插件路径或服务器域名解析在切换前失败时，保留旧连接。切换期间禁用再次操作；后端通过互斥锁拒绝并发命令，旧会话清理未完成时不会覆盖资源启动新节点。
 - 启动和回退都检查本地 DNS，并通过所选节点的 SOCKS 通道验证 HTTPS。确认成功后才显示为已开启；回退后下拉菜单同步到实际恢复的节点。
@@ -86,7 +85,7 @@ PF 恢复以内核回读为准：启动/回退后确认过滤规则、NAT、地�
 sudo ./build/ClimbOver.app/Contents/Helpers/ProxyControl stop
 ```
 
-不要在 GUI 会话期间运行旧的 `stop.sh`：旧脚本按进程名杀进程，而且操作不同的 PF anchor。不要在 GUI 会话期间重建应用或同时手动运行旧启动脚本。运行中的 CoreDNS 仍使用上级项目现有的 Corefile、domains.txt 和插件行为。
+不要在 GUI 会话期间运行旧的 `stop.sh`：旧脚本按进程名杀进程，而且操作不同的 PF anchor。不要在 GUI 会话期间重建应用或同时手动运行旧启动脚本。CoreDNS 配置来自内置模板；修改上级项目的 Corefile 不会影响 GUI 会话。
 
 本地配置可以包含可执行插件路径，所以项目配置、二进制和应用应视为自己信任的本地文件；此版本不面向多用户不可信配置分发。
 
@@ -103,7 +102,7 @@ bash test.sh
 ./build/ClimbOver.app/Contents/Helpers/ProxyControl check .. huacloud/us-adv-iepl-2.conf
 ```
 
-测试覆盖新旧格式配置归一化、链式代理保留、原配置不变、无效配置拒绝、路径和符号链接越界、命令参数引用、原生独立进程会话、工作目录和插件查找，以及通过 macOS 原生 `pfctl -n` 解析生成的 PF 规则。恢复测试覆盖进程异常、旧会话隔离、睡眠/唤醒及网络变化的判断逻辑、独立步骤失败、重试和 DNS 所有权。构建和这些测试不会修改 PF、DNS 或现有代理。
+测试覆盖模板生成、连续启动覆盖遗留配置、配置权限、DNS 路径引用、新旧格式配置归一化、链式代理保留、原配置不变、无效配置拒绝、路径和符号链接越界、命令参数引用、原生独立进程会话、工作目录和插件查找，以及通过 macOS 原生 `pfctl -n` 解析生成的 PF 规则。恢复测试覆盖进程异常、旧会话隔离、睡眠/唤醒及网络变化的判断逻辑、独立步骤失败、重试和 DNS 所有权。构建和这些测试不会修改 PF、DNS 或现有代理。
 
 可选实机测试：先停止已有代理，再执行 `sudo bash smoke-test.sh`。它短暂启动代理，验证本地 DNS、HTTPS 请求以及停止后的原 DNS 恢复；即使测试中途失败也会尝试清理会话。
 

@@ -1,0 +1,18 @@
+. {
+    bind 127.0.0.1
+    hosts {
+        fallthrough
+    }
+    blocklist {{BLOCKLIST_FILE}}
+    forward . 208.67.222.222:5353 208.67.220.220:5353 208.67.220.222:5353 208.67.222.220:5353 {
+        except {{DIRECT_DOMAINS}}
+    }
+    proxy . 119.29.29.29 223.5.5.5 223.6.6.6
+    bogus {{BOGUS_RESPONSES}}
+    log
+    cache
+    ipset {
+        appleroute {{APPLE_DOMAINS}}
+        biliroute {{BILI_DOMAINS}}
+    }
+}

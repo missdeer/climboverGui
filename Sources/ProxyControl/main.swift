@@ -181,12 +181,11 @@ func start(root: URL, profile: String, service: String, owner: ManagedProcess?, 
     cidrs += endpoints.filter { !$0.contains(":") }.map { $0 + "/32" }.joined(separator: "\n") + "\n"
     try cidrs.write(to: Runtime.directory.appendingPathComponent("direct_cidr.txt"), atomically: true, encoding: .utf8)
     let configURL = Runtime.directory.appendingPathComponent("config.json")
-    try data.write(to: configURL, options: .atomic)
-    try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configURL.path)
+    try RuntimeConfiguration.write(proxy: data, directory: Runtime.directory,
+        blocklist: root.appendingPathComponent("coredns/domains.txt"))
     try "[proxy_all]\n".write(to: Runtime.directory.appendingPathComponent("probe.acl"), atomically: true, encoding: .utf8)
+    let corefileURL = Runtime.directory.appendingPathComponent("Corefile")
     let rulesURL = Runtime.directory.appendingPathComponent("pf.conf")
-    try PFConfiguration.render(tableFile: Runtime.directory.appendingPathComponent("direct_cidr.txt"))
-        .write(to: rulesURL, atomically: true, encoding: .utf8)
     _ = try Command.run("/sbin/pfctl", ["-n", "-a", Runtime.anchor, "-f", rulesURL.path])
     var state = SessionState(profile: profile, service: chosenService, originalDNS: originalDNS)
     state.sessionID = UUID().uuidString
@@ -200,7 +199,7 @@ func start(root: URL, profile: String, service: String, owner: ManagedProcess?, 
         state.processes.append(try spawn(sslocal, ["-c", configURL.path], directory: sslocal.deletingLastPathComponent(), log: "sslocal.log", sessionID: state.sessionID))
         state.companions = try childProcesses(of: state.processes[0].pid)
         try save(state)
-        state.processes.append(try spawn(coredns, ["-conf", root.appendingPathComponent("coredns/Corefile").path], directory: root.appendingPathComponent("coredns"), log: "coredns.log", sessionID: state.sessionID))
+        state.processes.append(try spawn(coredns, ["-conf", corefileURL.path], directory: Runtime.directory, log: "coredns.log", sessionID: state.sessionID))
         try save(state)
         try waitForListeners(state)
         state.companions = try childProcesses(of: state.processes[0].pid)
