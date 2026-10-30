@@ -36,7 +36,8 @@ func verifyConnectivity(_ state: SessionState) throws {
     })
 }
 
-func connect(root: URL, profile: String, service: String, owner: ManagedProcess?) throws {
+func connect(root: URL, profile: String, service: String, owner: ManagedProcess?, additionalCIDRs: String = "") throws {
+    let additional = try DirectCIDRs.parse(additionalCIDRs)
     let previous = fm.fileExists(atPath: Runtime.state.path)
         ? try JSONDecoder().decode(SessionState.self, from: Data(contentsOf: Runtime.state)) : nil
     let canRestore = previous?.phase == .ready
@@ -51,11 +52,11 @@ func connect(root: URL, profile: String, service: String, owner: ManagedProcess?
     }, stop: { try stop() }, connect: {
         guard let candidate else { throw ControlError("新节点尚未准备完成。") }
         try start(root: root, profile: profile, service: service.isEmpty ? (previous?.service ?? "") : service,
-            owner: sessionOwner, prepared: candidate)
+            owner: sessionOwner, prepared: candidate, additionalCIDRs: additional)
     }, restore: canRestore ? {
         guard let previous, let fallback else { throw ControlError("旧节点运行配置未保存。") }
         guard sessionOwner?.alive != false else { throw ControlError("GUI 已退出，取消回退。") }
-        try start(root: root, profile: previous.profile, service: previous.service, owner: sessionOwner, prepared: fallback)
+        try start(root: root, profile: previous.profile, service: previous.service, owner: sessionOwner, prepared: fallback, additionalCIDRs: previous.additionalCIDRs ?? [])
     } : nil)
     try ServerSwitch.run(previous: canRestore ? previous?.profile : nil, actions: actions)
 }

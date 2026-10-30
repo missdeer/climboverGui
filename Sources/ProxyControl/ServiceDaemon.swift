@@ -9,10 +9,10 @@ final class ServiceEndpoint: NSObject, ProxyServiceProtocol {
     let owner: ManagedProcess
     init(owner: ManagedProcess) { self.owner = owner }
 
-    func perform(_ operation: String, profile: String, service: String, reply: @escaping (Data?, String?) -> Void) {
+    func perform(_ operation: String, profile: String, service: String, additionalCIDRs: String, reply: @escaping (Data?, String?) -> Void) {
         serviceQueue.async {
             do {
-                try ServiceRequest.validate(operation, profile: profile, service: service)
+                try ServiceRequest.validate(operation, profile: profile, service: service, additionalCIDRs: additionalCIDRs)
                 guard self.owner.alive else { throw ControlError("调用应用已退出。") }
                 let data = try locked {
                     try ensureRuntimeDirectory()
@@ -23,7 +23,7 @@ final class ServiceEndpoint: NSObject, ProxyServiceProtocol {
                             guard try serviceSnapshot().services.contains(service) else { throw ControlError("网络服务不存在或已停用。") }
                         }
                         try connect(root: URL(fileURLWithPath: BuildSettings.projectRoot), profile: profile,
-                            service: service, owner: self.owner)
+                            service: service, owner: self.owner, additionalCIDRs: additionalCIDRs)
                     case "stop": try stop()
                     case "prepareUpdate":
                         try stop()

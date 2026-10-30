@@ -187,6 +187,7 @@ struct SessionState: Codable {
     var phase: SessionPhase? = nil
     var recoveryReason: String? = nil
     var companions: [ManagedProcess]? = nil
+    var additionalCIDRs: [String]? = nil
 }
 
 enum SessionPhase: String, Codable { case starting, ready, recovering }

@@ -1,7 +1,7 @@
 import Foundation
 
 @objc protocol UntrustedProxyProtocol {
-    func perform(_ operation: String, profile: String, service: String, reply: @escaping (Data?, String?) -> Void)
+    func perform(_ operation: String, profile: String, service: String, additionalCIDRs: String, reply: @escaping (Data?, String?) -> Void)
 }
 
 let connection = NSXPCConnection(machServiceName: "com.dfordsoft.climbover.daemon", options: .privileged)
@@ -12,7 +12,7 @@ let remote = connection.remoteObjectProxyWithErrorHandler { error in
     fflush(stdout)
     exit(0)
 } as! UntrustedProxyProtocol
-remote.perform("snapshot", profile: "", service: "") { _, _ in
+remote.perform("snapshot", profile: "", service: "", additionalCIDRs: "") { _, _ in
     FileHandle.standardError.write(Data("FAIL: untrusted client reached the privileged service\n".utf8))
     exit(1)
 }

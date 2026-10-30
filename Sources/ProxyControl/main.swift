@@ -150,7 +150,7 @@ func waitForListeners(_ state: SessionState) throws {
     throw ControlError("代理或 DNS 未在预期端口就绪，请查看日志。")
 }
 
-func start(root: URL, profile: String, service: String, owner: ManagedProcess?, prepared: PreparedServer) throws {
+func start(root: URL, profile: String, service: String, owner: ManagedProcess?, prepared: PreparedServer, additionalCIDRs: [String]) throws {
     guard !fm.fileExists(atPath: Runtime.legacyToken) else {
         throw ControlError("命令行脚本代理正在运行。请先在终端执行 sudo ./stop.sh，再使用 GUI。")
     }
@@ -174,11 +174,10 @@ func start(root: URL, profile: String, service: String, owner: ManagedProcess?, 
         let busy = try Command.run("/usr/sbin/lsof", selection, checked: false)
         guard busy.status != 0 else { throw ControlError("端口已被其他程序占用：\(port)。请先停止已有代理或 DNS 服务。") }
     }
-    var cidrs = "127.0.0.0/8\n"
-    for name in ["direct_cidr.txt", "lan_cidr.txt"] {
-        cidrs += try String(contentsOf: root.appendingPathComponent(name), encoding: .utf8) + "\n"
+    let base = try ["direct_cidr.txt", "lan_cidr.txt"].map {
+        try String(contentsOf: root.appendingPathComponent($0), encoding: .utf8)
     }
-    cidrs += endpoints.filter { !$0.contains(":") }.map { $0 + "/32" }.joined(separator: "\n") + "\n"
+    let cidrs = try DirectCIDRs.render(base: base, endpoints: endpoints, additional: additionalCIDRs)
     try cidrs.write(to: Runtime.directory.appendingPathComponent("direct_cidr.txt"), atomically: true, encoding: .utf8)
     let configURL = Runtime.directory.appendingPathComponent("config.json")
     try RuntimeConfiguration.write(proxy: data, directory: Runtime.directory,
@@ -188,6 +187,7 @@ func start(root: URL, profile: String, service: String, owner: ManagedProcess?, 
     let rulesURL = Runtime.directory.appendingPathComponent("pf.conf")
     _ = try Command.run("/sbin/pfctl", ["-n", "-a", Runtime.anchor, "-f", rulesURL.path])
     var state = SessionState(profile: profile, service: chosenService, originalDNS: originalDNS)
+    state.additionalCIDRs = additionalCIDRs
     state.sessionID = UUID().uuidString
     state.owner = owner
     state.phase = .starting

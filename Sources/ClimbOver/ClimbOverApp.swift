@@ -13,6 +13,7 @@ final class ProxyModel: ObservableObject {
         didSet { UserDefaults.standard.set(service, forKey: "service") }
     }
     @Published var services: [String] = []
+    @Published var additionalCIDRs: String = UserDefaults.standard.string(forKey: "additionalDirectCIDRs") ?? ""
     @Published var status: PublicStatus?
     @Published var busy = false
     @Published var error: String?
@@ -119,6 +120,11 @@ final class ProxyModel: ObservableObject {
         if status != nil { operate(start: true) }
     }
 
+    private func requestOperation(start: Bool) async throws -> Data {
+        try await ServiceClient.call(start ? "start" : "stop", profile: start ? selected : "", service: start ? service : "",
+            additionalCIDRs: start ? additionalCIDRs : "")
+    }
+
     func operate(start: Bool, quit: Bool = false) {
         guard !busy else { return }
         busy = true
@@ -127,7 +133,7 @@ final class ProxyModel: ObservableObject {
         Task {
             do {
                 guard BackgroundService.instance.status == .enabled else { throw ControlError("请先启用并批准后台服务。") }
-                let data = try await ServiceClient.call(start ? "start" : "stop", profile: start ? selected : "", service: start ? service : "")
+                let data = try await requestOperation(start: start)
                 apply(try JSONDecoder().decode(ServiceSnapshot.self, from: data))
                 busy = false
                 refresh()
@@ -244,6 +250,7 @@ struct ControlPanel: View {
             Divider()
             HStack {
                 Menu {
+                    Button("额外直连 CIDR…") { openWindow(id: "direct-cidrs"); NSApp.activate(ignoringOtherApps: true) }
                     Button("查看日志…") { model.readLogs(); openWindow(id: "logs"); NSApp.activate(ignoringOtherApps: true) }
                     Button("后台服务设置…") { SMAppService.openSystemSettingsLoginItems() }
                     Button("重新注册后台服务…") { model.manageService("update") }
@@ -263,6 +270,50 @@ struct ControlPanel: View {
         }
         .padding(20)
         .frame(width: 330)
+    }
+}
+
+struct DirectCIDREditor: View {
+    @ObservedObject var model: ProxyModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft = ""
+
+    private var validationError: String? {
+        do { _ = try DirectCIDRs.parse(draft); return nil }
+        catch { return error.localizedDescription }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("额外直连 CIDR").font(.headline)
+            Text("这些 IPv4 网段将直接连接。每行输入一个 CIDR，例如 192.168.1.0/24；留空可清除额外设置。")
+                .foregroundStyle(.secondary)
+            TextEditor(text: $draft)
+                .font(.system(.body, design: .monospaced))
+                .accessibilityLabel("额外直连 IPv4 CIDR，每行一个")
+                .border(Color.secondary.opacity(0.3))
+                .frame(minHeight: 200)
+            if let error = validationError {
+                Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red)
+            }
+            Text("保存后，在下次启动代理或切换服务器时生效。")
+                .font(.callout).foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("保存") {
+                    guard let values = try? DirectCIDRs.parse(draft) else { return }
+                    model.additionalCIDRs = values.joined(separator: "\n")
+                    UserDefaults.standard.set(model.additionalCIDRs, forKey: "additionalDirectCIDRs")
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(model.busy || validationError != nil)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 480, minHeight: 380)
+        .onAppear { draft = model.additionalCIDRs }
     }
 }
 
@@ -314,6 +365,11 @@ struct ClimbOverApp: App {
             }
         }
         .menuBarExtraStyle(.window)
+
+        Window("额外直连 CIDR", id: "direct-cidrs") {
+            DirectCIDREditor(model: model)
+        }
+        .defaultSize(width: 540, height: 420)
 
         Window("ClimbOver 日志", id: "logs") {
             VStack(alignment: .leading) {

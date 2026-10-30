@@ -25,6 +25,8 @@ workspace/
 
 `build.sh` 将三个可执行文件复制进应用包，并将 `Templates/` 中的 sslocal、CoreDNS、pf 模板及 DNS 分流数据编入二进制。CoreDNS 需要支持模板中的 blocklist、proxy、bogus 和 ipset 插件。节点配置、domains.txt 和 CIDR 数据继续从上级工作目录读取，不随源码发布；无需准备外部 Corefile。
 
+在菜单栏面板的“更多操作”中选择“额外直连 CIDR…”，每行输入一个 IPv4 CIDR（如 `192.168.1.0/24`）。设置保存在当前用户的应用偏好中；保存后，下次启动代理或切换服务器时，会与 `direct_cidr.txt`、`lan_cidr.txt` 及代理服务器地址一起合并到 PF 的 `direct_cidr` 表。留空保存可移除额外设置。切换失败回退时使用原会话的额外 CIDR。当前 PF 规则仅处理 IPv4，编辑器不接受 IPv6。
+
 ## 构建与安装
 
 在本仓库目录执行：
