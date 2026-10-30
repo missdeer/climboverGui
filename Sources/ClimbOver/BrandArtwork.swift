@@ -17,7 +17,12 @@ enum ClimbOverArtwork {
         return path
     }
 
-    static func menuImage(state: State) -> NSImage {
+    // Cached template frames keep the menu bar animation small and independent of status polling.
+    static let connectedMenuFrames: [NSImage] = (0..<12).map { frame in
+        menuImage(state: .connected, pulse: (1 + cos(Double(frame) * 2 * .pi / 12)) / 2)
+    }
+
+    static func menuImage(state: State, pulse: Double = 1) -> NSImage {
         let image = NSImage(size: NSSize(width: 20, height: 18), flipped: false) { _ in
             NSColor.black.setStroke()
             NSColor.black.setFill()
@@ -26,7 +31,12 @@ enum ClimbOverArtwork {
             line.stroke()
             let badge = NSRect(x: 14.5, y: 1.5, width: 3.5, height: 3.5)
             switch state {
-            case .connected: NSBezierPath(ovalIn: badge).fill()
+            case .connected:
+                let diameter = 2.5 + pulse * 1.5
+                let dot = NSRect(x: badge.midX - diameter / 2, y: badge.midY - diameter / 2,
+                    width: diameter, height: diameter)
+                NSColor.black.withAlphaComponent(0.45 + pulse * 0.55).setFill()
+                NSBezierPath(ovalIn: dot).fill()
             case .working:
                 for x in [10.0, 13.0, 16.0] { NSBezierPath(ovalIn: NSRect(x: x, y: 1.5, width: 1.4, height: 1.4)).fill() }
             case .warning:

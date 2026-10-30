@@ -173,6 +173,28 @@ final class ProxyModel: ObservableObject {
     }
 }
 
+private struct MenuBarStatusIcon: View {
+    let state: ClimbOverArtwork.State
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var frame = 0
+
+    private var animates: Bool { state == .connected && !reduceMotion }
+
+    var body: some View {
+        Image(nsImage: animates ? ClimbOverArtwork.connectedMenuFrames[frame] : ClimbOverArtwork.menuImage(state: state))
+            .task(id: animates) {
+                frame = 0
+                guard animates else { return }
+                while !Task.isCancelled {
+                    do { try await Task.sleep(nanoseconds: 150_000_000) }
+                    catch { return } // State changes and view removal cancel the animation.
+                    guard !Task.isCancelled else { return }
+                    frame = (frame + 1) % ClimbOverArtwork.connectedMenuFrames.count
+                }
+            }
+    }
+}
+
 struct ControlPanel: View {
     @ObservedObject var model: ProxyModel
     @Environment(\.openWindow) private var openWindow
@@ -361,7 +383,7 @@ struct ClimbOverApp: App {
             Label {
                 Text(model.label)
             } icon: {
-                Image(nsImage: model.statusImage)
+                MenuBarStatusIcon(state: model.artworkState)
             }
         }
         .menuBarExtraStyle(.window)
