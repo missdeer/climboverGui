@@ -11,7 +11,7 @@ enum ServiceIdentity {
 }
 
 @objc protocol ProxyServiceProtocol {
-    func perform(_ operation: String, profile: String, service: String, additionalCIDRs: String, reply: @escaping (Data?, String?) -> Void)
+    func perform(_ operation: String, profile: String, service: String, additionalCIDRs: String, templatesJSON: String, reply: @escaping (Data?, String?) -> Void)
 }
 
 struct ServiceSnapshot: Codable {
@@ -22,12 +22,13 @@ struct ServiceSnapshot: Codable {
 }
 
 enum ServiceRequest {
-    static func validate(_ operation: String, profile: String, service: String, additionalCIDRs: String = "") throws {
+    static func validate(_ operation: String, profile: String, service: String, additionalCIDRs: String = "", templatesJSON: String = "") throws {
         guard ["start", "stop", "snapshot", "logs", "prepareUpdate"].contains(operation),
               profile.utf8.count <= 1024, service.utf8.count <= 256,
               !profile.contains("\0"), !service.contains("\0"),
               !profile.contains("\n"), !service.contains("\n") else { throw ControlError("无效的后台请求。") }
         _ = try DirectCIDRs.parse(additionalCIDRs)
+        _ = try EditableTemplates.decode(templatesJSON)
         if operation == "start" {
             guard !profile.isEmpty, !profile.hasPrefix("/"), !profile.split(separator: "/").contains(".."),
                   ["conf", "json"].contains(URL(fileURLWithPath: profile).pathExtension) else {

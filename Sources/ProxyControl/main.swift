@@ -26,12 +26,6 @@ func dns(_ service: String) throws -> [String] {
     return lines
 }
 
-func isIPAddress(_ value: String) -> Bool {
-    var v4 = in_addr()
-    var v6 = in6_addr()
-    return value.withCString { inet_pton(AF_INET, $0, &v4) == 1 || inet_pton(AF_INET6, $0, &v6) == 1 }
-}
-
 func defaultService() throws -> String {
     let route = try Command.run("/sbin/route", ["-n", "get", "default"]).output
     guard let interface = route.split(separator: "\n").first(where: { $0.contains("interface:") })?
@@ -181,7 +175,7 @@ func start(root: URL, profile: String, service: String, owner: ManagedProcess?, 
     try cidrs.write(to: Runtime.directory.appendingPathComponent("direct_cidr.txt"), atomically: true, encoding: .utf8)
     let configURL = Runtime.directory.appendingPathComponent("config.json")
     try RuntimeConfiguration.write(proxy: data, directory: Runtime.directory,
-        blocklist: root.appendingPathComponent("coredns/domains.txt"))
+        blocklist: root.appendingPathComponent("coredns/domains.txt"), corefile: prepared.corefile, blocklistContent: prepared.blocklistContent)
     try "[proxy_all]\n".write(to: Runtime.directory.appendingPathComponent("probe.acl"), atomically: true, encoding: .utf8)
     let corefileURL = Runtime.directory.appendingPathComponent("Corefile")
     let rulesURL = Runtime.directory.appendingPathComponent("pf.conf")

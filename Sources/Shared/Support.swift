@@ -105,18 +105,16 @@ enum Profile {
         return file
     }
 
-    static func read(_ url: URL) throws -> [String: Any] {
+    static func read(_ url: URL, template: String = ConfigurationTemplates.sslocal) throws -> [String: Any] {
         guard let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any] else {
             throw ControlError("不是有效的 JSON 客户端配置。")
         }
-        return try normalize(object)
+        return try normalize(object, template: template)
     }
 
-    static func normalize(_ input: [String: Any]) throws -> [String: Any] {
+    static func normalize(_ input: [String: Any], template: String = ConfigurationTemplates.sslocal) throws -> [String: Any] {
         var object = input
-        guard let listener = try JSONSerialization.jsonObject(with: Data(ConfigurationTemplates.sslocal.utf8)) as? [String: Any] else {
-            throw ControlError("内置 sslocal 模板无效。")
-        }
+        let listener = try EditableTemplates(sslocal: template).listener()
         let servers = object["servers"] as? [[String: Any]]
         guard object["server"] is String || servers?.isEmpty == false else {
             throw ControlError("配置缺少代理服务器。")

@@ -25,8 +25,8 @@ private final class PendingServiceReply: @unchecked Sendable {
 }
 
 enum ServiceClient {
-    static func call(_ operation: String, profile: String = "", service: String = "", additionalCIDRs: String = "") async throws -> Data {
-        try ServiceRequest.validate(operation, profile: profile, service: service, additionalCIDRs: additionalCIDRs)
+    static func call(_ operation: String, profile: String = "", service: String = "", additionalCIDRs: String = "", templatesJSON: String = "") async throws -> Data {
+        try ServiceRequest.validate(operation, profile: profile, service: service, additionalCIDRs: additionalCIDRs, templatesJSON: templatesJSON)
         return try await withCheckedThrowingContinuation { continuation in
             let connection = NSXPCConnection(machServiceName: ServiceIdentity.name, options: .privileged)
             connection.setCodeSigningRequirement(ServiceIdentity.requirement(identifier: ServiceIdentity.name))
@@ -37,7 +37,7 @@ enum ServiceClient {
             connection.resume()
             let proxy = connection.remoteObjectProxyWithErrorHandler { pending.finish(.failure($0)) } as? ProxyServiceProtocol
             guard let proxy else { pending.finish(.failure(ControlError("后台接口不可用。"))); return }
-            proxy.perform(operation, profile: profile, service: service, additionalCIDRs: additionalCIDRs) { data, message in
+            proxy.perform(operation, profile: profile, service: service, additionalCIDRs: additionalCIDRs, templatesJSON: templatesJSON) { data, message in
                 if let message { pending.finish(.failure(ControlError(message))) }
                 else if let data { pending.finish(.success(data)) }
                 else { pending.finish(.failure(ControlError("后台没有返回结果。"))) }

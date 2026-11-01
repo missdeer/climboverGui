@@ -14,6 +14,7 @@ final class ProxyModel: ObservableObject {
     }
     @Published var services: [String] = []
     @Published var additionalCIDRs: String = UserDefaults.standard.string(forKey: "additionalDirectCIDRs") ?? ""
+    @Published var templatesJSON = UserDefaults.standard.string(forKey: EditableTemplates.preferencesKey) ?? ""
     @Published var status: PublicStatus?
     @Published var busy = false
     @Published var error: String?
@@ -121,8 +122,9 @@ final class ProxyModel: ObservableObject {
     }
 
     private func requestOperation(start: Bool) async throws -> Data {
-        try await ServiceClient.call(start ? "start" : "stop", profile: start ? selected : "", service: start ? service : "",
-            additionalCIDRs: start ? additionalCIDRs : "")
+        let payload = start ? try await RemoteTemplateVariables.resolve(EditableTemplates.decode(templatesJSON)).encoded() : ""
+        return try await ServiceClient.call(start ? "start" : "stop", profile: start ? selected : "", service: start ? service : "",
+            additionalCIDRs: start ? additionalCIDRs : "", templatesJSON: payload)
     }
 
     func operate(start: Bool, quit: Bool = false) {
@@ -272,6 +274,7 @@ struct ControlPanel: View {
             Divider()
             HStack {
                 Menu {
+                    Button("配置文件模板…") { openWindow(id: "configuration-templates"); NSApp.activate(ignoringOtherApps: true) }
                     Button("额外直连 CIDR…") { openWindow(id: "direct-cidrs"); NSApp.activate(ignoringOtherApps: true) }
                     Button("查看日志…") { model.readLogs(); openWindow(id: "logs"); NSApp.activate(ignoringOtherApps: true) }
                     Button("后台服务设置…") { SMAppService.openSystemSettingsLoginItems() }
@@ -392,6 +395,11 @@ struct ClimbOverApp: App {
             DirectCIDREditor(model: model)
         }
         .defaultSize(width: 540, height: 420)
+
+        Window("配置文件模板", id: "configuration-templates") {
+            ConfigurationTemplateEditor(model: model)
+        }
+        .defaultSize(width: 780, height: 620)
 
         Window("ClimbOver 日志", id: "logs") {
             VStack(alignment: .leading) {

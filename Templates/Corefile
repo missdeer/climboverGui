@@ -13,6 +13,5 @@
     cache
     ipset {
         appleroute {{APPLE_DOMAINS}}
-        biliroute {{BILI_DOMAINS}}
     }
 }
