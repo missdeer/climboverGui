@@ -24,10 +24,7 @@ enum ConfigurationTemplateSection: String, CaseIterable, Identifiable {
         switch self {
         case .sslocal: return ConfigurationTemplates.sslocal
         case .coreDNS: return ConfigurationTemplates.coreDNS
-        case .directDomains: return ""
-        case .bogusResponses: return ""
-        case .appleDomains: return ""
-        case .blocklistFile: return ""
+        default: return variable?.defaultURL ?? ""
         }
     }
 
@@ -38,16 +35,16 @@ enum ConfigurationTemplateSection: String, CaseIterable, Identifiable {
         case .coreDNS:
             return "变量内容来自各项设置中的下载 URL 和本地缓存。Corefile 语法在启动时由 CoreDNS 检查。"
         case .blocklistFile:
-            return "输入屏蔽列表的 HTTP/HTTPS URL。下载内容会缓存，并在启动时写入屏蔽列表文件。留空使用项目的 coredns/domains.txt。"
+            return "默认下载 missdeer/blocklist 的 alldomains.txt。下载内容会缓存，并在启动时写入屏蔽列表文件。可修改 URL，留空使用项目的 coredns/domains.txt。"
         default:
-            return "输入 UTF-8 文本列表的 HTTP/HTTPS URL，每行一项或以空白分隔，支持 # 注释。留空使用内置列表。"
+            return "默认使用 dnsmasq-china-list。支持纯域名/IP 列表和 dnsmasq server=/域名/IP、bogus-nxdomain=IP 格式及 # 注释。可修改 URL，留空使用内置列表。"
         }
     }
 
     func text(in templates: EditableTemplates) -> String {
         if self == .sslocal { return templates.sslocal }
         if self == .coreDNS { return templates.coreDNS }
-        return variable.flatMap { templates.variableURLs?[$0.rawValue] } ?? ""
+        return variable?.source(in: templates) ?? ""
     }
 
     func update(_ text: String, in templates: inout EditableTemplates) {
@@ -55,7 +52,7 @@ enum ConfigurationTemplateSection: String, CaseIterable, Identifiable {
         if self == .coreDNS { templates.coreDNS = text; return }
         guard let variable else { return }
         var urls = templates.variableURLs ?? [:]
-        urls[variable.rawValue] = text.isEmpty ? nil : text
+        urls[variable.rawValue] = text == variable.defaultURL ? nil : text
         templates.variableURLs = urls.isEmpty ? nil : urls
     }
 }

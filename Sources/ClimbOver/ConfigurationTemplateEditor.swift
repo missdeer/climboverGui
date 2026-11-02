@@ -9,6 +9,10 @@ struct ConfigurationTemplateEditor: View {
     @State private var confirmDiscard = false
     @State private var downloading = false
     @State private var cache: DownloadedTemplateVariable?
+    @State private var downloadTask: Task<Void, Never>?
+    @State private var downloadID: UUID?
+    @State private var activeVariable: RemoteTemplateVariable?
+    @State private var downloadProgress = VariableDownloadProgress(receivedBytes: 0, totalBytes: nil)
 
     private var validationError: String? {
         do { _ = try draft.encoded(); return nil }
@@ -33,30 +37,47 @@ struct ConfigurationTemplateEditor: View {
     }
 
     private func refreshCache() {
-        guard let variable = section.variable else { return }
-        downloading = true
-        saveError = nil
-        let source = section.text(in: draft)
-        Task { @MainActor in
-            defer { downloading = false }
-            do { cache = try await RemoteTemplateVariables.download(variable, source: source) }
-            catch { saveError = error.localizedDescription }
-        }
+        startDownload(saveSettings: false)
     }
 
     private func save() {
+        startDownload(saveSettings: true)
+    }
+
+    private func startDownload(saveSettings: Bool) {
+        guard !downloading, saveSettings || section.variable != nil else { return }
+        let id = UUID()
+        downloadID = id
         downloading = true
         saveError = nil
-        Task { @MainActor in
-            defer { downloading = false }
+        activeVariable = saveSettings ? nil : section.variable
+        downloadProgress = VariableDownloadProgress(receivedBytes: 0, totalBytes: nil)
+        let report: @Sendable (RemoteTemplateVariable, VariableDownloadProgress) -> Void = { variable, value in
+            Task { @MainActor in
+                guard downloading, downloadID == id else { return }
+                activeVariable = variable
+                downloadProgress = value
+            }
+        }
+        downloadTask = Task { @MainActor in
+            defer { downloading = false; downloadTask = nil; downloadID = nil }
             do {
-                // Fetch new URLs before saving, so the saved settings also work offline.
-                _ = try await RemoteTemplateVariables.resolve(draft)
-                let text = try draft.encoded()
-                UserDefaults.standard.set(text, forKey: EditableTemplates.preferencesKey)
-                model.templatesJSON = text
-                dismiss()
-            } catch { saveError = error.localizedDescription; reloadCache() }
+                if saveSettings {
+                    // Fetch new URLs before saving, so the saved settings also work offline.
+                    _ = try await RemoteTemplateVariables.resolve(draft, progress: report)
+                    try Task.checkCancellation()
+                    let text = try draft.encoded()
+                    UserDefaults.standard.set(text, forKey: EditableTemplates.preferencesKey)
+                    model.templatesJSON = text
+                    dismiss()
+                } else if let variable = section.variable {
+                    cache = try await RemoteTemplateVariables.download(variable, source: section.text(in: draft),
+                        progress: { report(variable, $0) })
+                }
+            } catch {
+                saveError = Task.isCancelled ? "下载已取消，已有缓存已保留。" : error.localizedDescription
+                reloadCache()
+            }
         }
     }
 
@@ -91,14 +112,17 @@ struct ConfigurationTemplateEditor: View {
             Picker("编辑内容", selection: $section) {
                 ForEach(ConfigurationTemplateSection.allCases) { item in Text(item.rawValue).tag(item) }
             }
+            .disabled(downloading)
             Text(section.help).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
-            if section.variable != nil { sourceEditor }
+            if section.variable != nil { sourceEditor.disabled(downloading) }
             else {
                 TextEditor(text: editorText)
                     .font(.system(.body, design: .monospaced)).disableAutocorrection(true)
                     .accessibilityLabel(section.rawValue).border(Color.secondary.opacity(0.3))
                     .frame(minHeight: 280).id(section)
+                    .disabled(downloading)
             }
+            if downloading { TemplateDownloadStatus(variable: activeVariable, progress: downloadProgress) { downloadTask?.cancel() } }
             if let error = saveError ?? validationError {
                 ScrollView {
                     Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red).textSelection(.enabled)
@@ -109,15 +133,17 @@ struct ConfigurationTemplateEditor: View {
                 .font(.callout).foregroundStyle(.secondary)
             HStack {
                 Button("恢复当前项默认值") { section.update(section.defaultText, in: &draft); saveError = nil; reloadCache() }
+                    .disabled(downloading)
                 Spacer()
-                if downloading { ProgressView().controlSize(.small) }
                 Button("取消") { if changed { confirmDiscard = true } else { dismiss() } }.keyboardShortcut(.cancelAction)
+                    .disabled(downloading)
                 Button("保存") { save() }.keyboardShortcut(.defaultAction)
-                    .disabled(model.busy || validationError != nil || !changed)
+                    .disabled(downloading || model.busy || validationError != nil || !changed)
             }
         }
         .padding(20).frame(minWidth: 640, minHeight: 520)
-        .disabled(downloading)
+        .interactiveDismissDisabled(downloading)
+        .onDisappear { downloadTask?.cancel() }
         .onAppear {
             do { draft = try EditableTemplates.decode(model.templatesJSON); reloadCache() }
             catch { saveError = error.localizedDescription }

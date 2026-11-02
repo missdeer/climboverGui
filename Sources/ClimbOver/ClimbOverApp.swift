@@ -24,6 +24,10 @@ final class ProxyModel: ObservableObject {
     @Published var recoveryNotice: String?
     @Published var backgroundLabel = BackgroundService.label
     @Published var backendReady = false
+    @Published var downloadProgress: VariableDownloadProgress?
+    @Published var downloadingVariable: RemoteTemplateVariable?
+    private var operationTask: Task<Void, Never>?
+    private var downloadID: UUID?
     private var refreshing = false
     private var timer: Timer?
     let root: URL
@@ -122,9 +126,26 @@ final class ProxyModel: ObservableObject {
     }
 
     private func requestOperation(start: Bool) async throws -> Data {
-        let payload = start ? try await RemoteTemplateVariables.resolve(EditableTemplates.decode(templatesJSON)).encoded() : ""
+        var payload = ""
+        if start {
+            let id = UUID()
+            downloadID = id
+            defer { downloadID = nil; downloadProgress = nil; downloadingVariable = nil }
+            payload = try await RemoteTemplateVariables.resolve(EditableTemplates.decode(templatesJSON), progress: { [weak self] variable, progress in
+                Task { @MainActor in
+                    guard let self, self.downloadID == id else { return }
+                    self.downloadingVariable = variable
+                    self.downloadProgress = progress
+                }
+            }).encoded()
+            try Task.checkCancellation()
+        }
         return try await ServiceClient.call(start ? "start" : "stop", profile: start ? selected : "", service: start ? service : "",
             additionalCIDRs: start ? additionalCIDRs : "", templatesJSON: payload)
+    }
+
+    func cancelDownload() {
+        if downloadProgress != nil { operationTask?.cancel() }
     }
 
     func operate(start: Bool, quit: Bool = false) {
@@ -132,7 +153,8 @@ final class ProxyModel: ObservableObject {
         busy = true
         error = nil
         let switching = start && status != nil
-        Task {
+        operationTask = Task {
+            defer { operationTask = nil }
             do {
                 guard BackgroundService.instance.status == .enabled else { throw ControlError("请先启用并批准后台服务。") }
                 let data = try await requestOperation(start: start)
@@ -141,6 +163,12 @@ final class ProxyModel: ObservableObject {
                 refresh()
                 if quit { NSApplication.shared.terminate(nil) }
             } catch {
+                if Task.isCancelled {
+                    self.error = "下载已取消，已有缓存已保留。"
+                    busy = false
+                    refresh()
+                    return
+                }
                 self.error = error.localizedDescription
                 UserDefaults.standard.set(error.localizedDescription, forKey: "lastOperationError")
                 busy = false
@@ -241,6 +269,9 @@ struct ControlPanel: View {
             if model.legacy {
                 Text("请先在终端执行 sudo ./stop.sh 停止脚本代理，再使用此应用。")
                     .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+            if let progress = model.downloadProgress {
+                TemplateDownloadStatus(variable: model.downloadingVariable, progress: progress, cancel: model.cancelDownload)
             }
             if let status = model.status {
                 Text("当前：\(status.profile) · \(status.service)")

@@ -29,9 +29,20 @@ workspace/
 
 在菜单栏面板的“更多操作”中选择“额外直连 CIDR…”，每行输入一个 IPv4 CIDR（如 `192.168.1.0/24`）。设置保存在当前用户的应用偏好中；保存后，下次启动代理或切换服务器时，会与 `direct_cidr.txt`、`lan_cidr.txt` 及代理服务器地址一起合并到 PF 的 `direct_cidr` 表。留空保存可移除额外设置。切换失败回退时使用原会话的额外 CIDR。当前 PF 规则仅处理 IPv4，编辑器不接受 IPv6。
 
-在“更多操作”中选择“配置文件模板…”，可以编辑 sslocal JSON 和 CoreDNS Corefile，以及为 `DIRECT_DOMAINS`、`BOGUS_RESPONSES`、`APPLE_DOMAINS`、`BLOCKLIST_FILE` 分别设置 HTTP/HTTPS URL。保存时自动下载尚无缓存的地址；启动或切换时优先使用本地缓存，缓存缺失时自动下载。列表应为 UTF-8 纯文本；域名/IP 列表每行一项或以空白分隔，支持 `#` 注释。URL 留空时使用内置列表，屏蔽列表则使用项目的 `coredns/domains.txt`。独立的 Bilibili 分流列表已移除，旧模板中的 `biliroute` 行会自动清理。
+在“更多操作”中选择“配置文件模板…”，可以编辑 sslocal JSON 和 CoreDNS Corefile，以及为 `DIRECT_DOMAINS`、`BOGUS_RESPONSES`、`APPLE_DOMAINS`、`BLOCKLIST_FILE` 分别设置 HTTP/HTTPS URL。保存时自动下载尚无缓存的地址；启动或切换时优先使用本地缓存，缓存缺失时自动下载。默认 URL 如下：
 
-每个变量的设置页面显示缓存更新时间、大小和内容预览，并提供“重新下载并刷新缓存”。缓存按变量和 URL 分别保存在当前用户的 `~/Library/Application Support/ClimbOver/TemplateCache/` 中；下载失败、HTTP 错误、编码或内容校验失败不会覆盖有效缓存。修改 URL 后不会复用旧 URL 的缓存。保存的 URL 与模板位于当前用户偏好中；单份下载最大 16 MB，传给后台的配置总大小最大 32 MB。后台不发起网络下载，GUI 将缓存内容通过经过身份校验的 XPC 请求传给后台。
+| 列表 | 默认 URL |
+| --- | --- |
+| 中国直连域名 `DIRECT_DOMAINS` | https://github.com/felixonmars/dnsmasq-china-list/raw/refs/heads/master/accelerated-domains.china.conf |
+| 污染响应 IP `BOGUS_RESPONSES` | https://github.com/felixonmars/dnsmasq-china-list/raw/refs/heads/master/bogus-nxdomain.china.conf |
+| Apple 域名 `APPLE_DOMAINS` | https://github.com/felixonmars/dnsmasq-china-list/raw/refs/heads/master/apple.china.conf |
+| 屏蔽列表 `BLOCKLIST_FILE` | https://github.com/missdeer/blocklist/raw/refs/heads/master/convert/alldomains.txt |
+
+已有自定义 URL 会保留，未设置过 URL 的旧配置使用以上默认值，“恢复当前项默认值”会恢复对应地址。手动留空时使用内置列表，屏蔽列表则使用项目的 `coredns/domains.txt`。下载内容须为 UTF-8 文本；域名/IP 列表支持每行一项或空白分隔及 `#` 注释，也支持 dnsmasq `server=/域名/IP` 和 `bogus-nxdomain=IP` 格式，下载后自动提取域名或 IP。独立的 Bilibili 分流列表已移除，旧模板中的 `biliroute` 行会自动清理。
+
+每个变量的设置页面显示缓存更新时间、大小和内容预览，并提供“重新下载并刷新缓存”。缓存按变量和 URL 分别保存在当前用户的 `~/Library/Application Support/ClimbOver/TemplateCache/` 中；下载失败、HTTP 错误、编码或内容校验失败不会覆盖有效缓存。修改 URL 后不会复用旧 URL 的缓存。保存的 URL 与模板位于当前用户偏好中；单份下载最大 30 MB，传给后台的配置总大小最大 32 MB。后台不发起网络下载，GUI 将缓存内容通过经过身份校验的 XPC 请求传给后台。
+
+手动刷新、保存设置时的下载，以及启动/切换时的自动下载均显示当前列表和已下载大小；服务器提供总大小时还显示百分比和进度条。点击“取消下载”会终止网络请求，保留该列表已有缓存；取消保存时不写入新设置，取消启动或切换时不向后台发送启动请求。
 
 `BLOCKLIST_FILE` 下载的是文件内容，后台将其写到运行目录的 `blocklist.txt`，再把该本地绝对路径替换到 Corefile。其他三个变量替换为缓存中的域名/IP 列表。保存或刷新缓存后，在下次启动代理或切换服务器时生效；切换失败会恢复旧会话的 sslocal、Corefile 和下载的屏蔽列表内容。sslocal 模板仍用于本地监听，必须保留 `redir`、`127.0.0.1:59097` 和 `tcp_only`，服务器、凭据及插件参数来自节点配置。旧版已保存模板可继续使用。
 
