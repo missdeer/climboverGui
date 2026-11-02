@@ -29,6 +29,12 @@ workspace/
 
 在菜单栏面板的“更多操作”中选择“额外直连 CIDR…”，每行输入一个 IPv4 CIDR（如 `192.168.1.0/24`）。设置保存在当前用户的应用偏好中；保存后，下次启动代理或切换服务器时，会与 `direct_cidr.txt`、`lan_cidr.txt` 及代理服务器地址一起合并到 PF 的 `direct_cidr` 表。留空保存可移除额外设置。切换失败回退时使用原会话的额外 CIDR。当前 PF 规则仅处理 IPv4，编辑器不接受 IPv6。
 
+“额外直连域名…”同样支持每行一项、留空清除，并在下次启动或切换时生效。域名会转为小写、去掉末尾的点并去重；请输入裸域名，中文域名使用 Punycode。Corefile 的 ipset 插件将这些域名及其子域名的解析 IP 加入 `direct_cidr` 表，供 pf.conf 的 IPv4 直连规则使用。域名通过经过身份校验的 XPC 配置传给后台，切换失败时恢复原 Corefile。旧模板的 ipset 块会自动补入 `{{ADDITIONAL_DIRECT_DOMAINS}}`；完全自定义的模板需在 ipset 块中放置该占位符。Corefile 使用 `direct_cidr:com.apple/climbovergui` 指定表和 anchor；Darwin ipset 通过 dnsredir 的 PF 接口直接写入 `/dev/pf`，无需 pfctl 适配脚本。
+
+CoreDNS 必须包含支持 macOS PF 的新版 ipset；旧版本即使接受 Corefile 语法，也可能不执行写表。已有 `../coredns-dev/{coredns,coredns_custom_build,ipset}` 源码时，可执行 `bash build-coredns.sh`，按 AppVeyor 的插件配置、forward 补丁和本地 ipset 源码编译本机版本。通过 `GO_BINARY` 指定 Go 路径，`COREDNS_SOURCE_DIR` 指定源码根目录。CoreDNS 构建副本、dnsredir、PF 头文件和产物均位于 `build/coredns-local/`，无需往系统目录安装头文件；再次运行会复用 CoreDNS 构建副本，ipset 始终使用源码目录中的当前版本。产物为 `build/coredns-local/coredns-native`。
+
+将本机产物用于 GUI 时，执行 `install -m 755 build/coredns-local/coredns-native ../coredns/coredns` 后再运行 `bash build.sh`。可在 `build/coredns-local/coredns` 中使用构建时的 Go 和 CGO 头文件设置执行 `go test -race github.com/missdeer/ipset`，验证 native PF 调用、设备生命周期及域名匹配；单元测试替换 PF 系统调用，不改变系统 DNS/PF。真实写表测试需显式设置 `IPSET_INTEGRATION_TEST=1` 并准备 `testset` 表。
+
 在“更多操作”中选择“配置文件模板…”，可以编辑 sslocal JSON 和 CoreDNS Corefile，以及为 `DIRECT_DOMAINS`、`BOGUS_RESPONSES`、`APPLE_DOMAINS`、`BLOCKLIST_FILE` 分别设置 HTTP/HTTPS URL。保存时自动下载尚无缓存的地址；启动或切换时优先使用本地缓存，缓存缺失时自动下载。默认 URL 如下：
 
 | 列表 | 默认 URL |

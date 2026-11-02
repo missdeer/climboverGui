@@ -23,8 +23,9 @@ func prepareServer(root: URL, profile: String, snapshot: Data? = nil, templates:
     let blocklistContent = snapshot == nil ? templates.dnsVariables?.blocklistContent : blocklistSnapshot
     let blocklistURL = blocklistContent == nil ? root.appendingPathComponent("coredns/domains.txt")
         : Runtime.directory.appendingPathComponent("blocklist.txt")
+    let additionalDomains = try DirectDomains.parse(templates.additionalDirectDomains ?? "")
     return PreparedServer(data: try JSONSerialization.data(withJSONObject: runtime, options: [.prettyPrinted, .sortedKeys]), endpoints: endpoints, blocklistContent: blocklistContent,
-        corefile: corefileSnapshot ?? CoreDNSConfiguration.render(blocklist: blocklistURL, template: templates.coreDNS, variables: templates.dnsVariables ?? DNSVariables()))
+        corefile: corefileSnapshot ?? CoreDNSConfiguration.render(blocklist: blocklistURL, template: templates.coreDNS, variables: templates.dnsVariables ?? DNSVariables(), additionalDomains: additionalDomains))
 }
 
 func verifyConnectivity(_ state: SessionState) throws {

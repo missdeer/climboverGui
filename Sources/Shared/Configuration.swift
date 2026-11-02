@@ -19,8 +19,20 @@ enum RuntimeConfiguration {
 }
 
 enum CoreDNSConfiguration {
-    static func render(blocklist: URL, template: String = ConfigurationTemplates.coreDNS, variables: DNSVariables = DNSVariables()) -> String {
-        removingBilibiliRoute(from: template)
+    static let additionalDomainsPlaceholder = "{{ADDITIONAL_DIRECT_DOMAINS}}"
+
+    // Saved templates predate the extra-domain setting. Reuse their existing ipset block.
+    static func addingDirectDomainsPlaceholder(to template: String) -> String {
+        guard !template.contains(additionalDomainsPlaceholder),
+              let range = template.range(of: #"(?m)^\s*ipset\s*\{"#, options: .regularExpression) else { return template }
+        var result = template
+        result.insert(contentsOf: "\n        " + additionalDomainsPlaceholder + "\n", at: range.upperBound)
+        return result
+    }
+
+    static func render(blocklist: URL, template: String = ConfigurationTemplates.coreDNS, variables: DNSVariables = DNSVariables(), additionalDomains: [String] = []) -> String {
+        addingDirectDomainsPlaceholder(to: removingBilibiliRoute(from: template))
+            .replacingOccurrences(of: additionalDomainsPlaceholder, with: additionalDomains.isEmpty ? "" : "direct_cidr:\(Runtime.anchor) " + additionalDomains.joined(separator: " "))
             .replacingOccurrences(of: "{{DIRECT_DOMAINS}}", with: words(variables.directDomains ?? ConfigurationTemplates.directDomains))
             .replacingOccurrences(of: "{{BOGUS_RESPONSES}}", with: words(variables.bogusResponses ?? ConfigurationTemplates.bogusResponses))
             .replacingOccurrences(of: "{{APPLE_DOMAINS}}", with: words(variables.appleDomains ?? ConfigurationTemplates.appleDomains))
@@ -56,6 +68,7 @@ struct EditableTemplates: Codable, Equatable {
     var coreDNS = ConfigurationTemplates.coreDNS
     var dnsVariables: DNSVariables? = nil
     var variableURLs: [String: String]? = nil
+    var additionalDirectDomains: String? = nil
     static let preferencesKey = "configurationTemplates"
     static let maximumBytes = 32 * 1024 * 1024
 
@@ -83,8 +96,12 @@ struct EditableTemplates: Codable, Equatable {
         }
         try RemoteTemplateVariables.validateURLs(variableURLs ?? [:])
         try dnsVariables?.validate()
+        let domains = try DirectDomains.parse(additionalDirectDomains ?? "")
+        if !domains.isEmpty && !CoreDNSConfiguration.addingDirectDomainsPlaceholder(to: coreDNS).contains(CoreDNSConfiguration.additionalDomainsPlaceholder) {
+            throw ControlError("请在 CoreDNS 模板的 ipset 块中加入 {{ADDITIONAL_DIRECT_DOMAINS}}，以启用额外直连域名。")
+        }
         _ = try listener()
-        let placeholders = ["{{DIRECT_DOMAINS}}", "{{BOGUS_RESPONSES}}", "{{APPLE_DOMAINS}}", "{{BLOCKLIST_FILE}}"]
+        let placeholders = ["{{DIRECT_DOMAINS}}", "{{BOGUS_RESPONSES}}", "{{APPLE_DOMAINS}}", "{{BLOCKLIST_FILE}}", CoreDNSConfiguration.additionalDomainsPlaceholder]
         let remainder = placeholders.reduce(coreDNS) { $0.replacingOccurrences(of: $1, with: "") }
         guard !remainder.contains("{{"), !remainder.contains("}}") else {
             throw ControlError("CoreDNS 模板包含未知或不完整的占位符。")

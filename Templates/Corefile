@@ -12,6 +12,7 @@
     log
     cache
     ipset {
+        {{ADDITIONAL_DIRECT_DOMAINS}}
         appleroute {{APPLE_DOMAINS}}
     }
 }

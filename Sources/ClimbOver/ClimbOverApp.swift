@@ -14,6 +14,7 @@ final class ProxyModel: ObservableObject {
     }
     @Published var services: [String] = []
     @Published var additionalCIDRs: String = UserDefaults.standard.string(forKey: "additionalDirectCIDRs") ?? ""
+    @Published var additionalDomains: String = UserDefaults.standard.string(forKey: DirectDomains.preferencesKey) ?? ""
     @Published var templatesJSON = UserDefaults.standard.string(forKey: EditableTemplates.preferencesKey) ?? ""
     @Published var status: PublicStatus?
     @Published var busy = false
@@ -131,7 +132,9 @@ final class ProxyModel: ObservableObject {
             let id = UUID()
             downloadID = id
             defer { downloadID = nil; downloadProgress = nil; downloadingVariable = nil }
-            payload = try await RemoteTemplateVariables.resolve(EditableTemplates.decode(templatesJSON), progress: { [weak self] variable, progress in
+            var templates = try EditableTemplates.decode(templatesJSON)
+            templates.additionalDirectDomains = additionalDomains
+            payload = try await RemoteTemplateVariables.resolve(templates, progress: { [weak self] variable, progress in
                 Task { @MainActor in
                     guard let self, self.downloadID == id else { return }
                     self.downloadingVariable = variable
@@ -306,6 +309,7 @@ struct ControlPanel: View {
             HStack {
                 Menu {
                     Button("配置文件模板…") { openWindow(id: "configuration-templates"); NSApp.activate(ignoringOtherApps: true) }
+                    Button("额外直连域名…") { openWindow(id: "direct-domains"); NSApp.activate(ignoringOtherApps: true) }
                     Button("额外直连 CIDR…") { openWindow(id: "direct-cidrs"); NSApp.activate(ignoringOtherApps: true) }
                     Button("查看日志…") { model.readLogs(); openWindow(id: "logs"); NSApp.activate(ignoringOtherApps: true) }
                     Button("后台服务设置…") { SMAppService.openSystemSettingsLoginItems() }
@@ -326,50 +330,6 @@ struct ControlPanel: View {
         }
         .padding(20)
         .frame(width: 330)
-    }
-}
-
-struct DirectCIDREditor: View {
-    @ObservedObject var model: ProxyModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var draft = ""
-
-    private var validationError: String? {
-        do { _ = try DirectCIDRs.parse(draft); return nil }
-        catch { return error.localizedDescription }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("额外直连 CIDR").font(.headline)
-            Text("这些 IPv4 网段将直接连接。每行输入一个 CIDR，例如 192.168.1.0/24；留空可清除额外设置。")
-                .foregroundStyle(.secondary)
-            TextEditor(text: $draft)
-                .font(.system(.body, design: .monospaced))
-                .accessibilityLabel("额外直连 IPv4 CIDR，每行一个")
-                .border(Color.secondary.opacity(0.3))
-                .frame(minHeight: 200)
-            if let error = validationError {
-                Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red)
-            }
-            Text("保存后，在下次启动代理或切换服务器时生效。")
-                .font(.callout).foregroundStyle(.secondary)
-            HStack {
-                Spacer()
-                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("保存") {
-                    guard let values = try? DirectCIDRs.parse(draft) else { return }
-                    model.additionalCIDRs = values.joined(separator: "\n")
-                    UserDefaults.standard.set(model.additionalCIDRs, forKey: "additionalDirectCIDRs")
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(model.busy || validationError != nil)
-            }
-        }
-        .padding(20)
-        .frame(minWidth: 480, minHeight: 380)
-        .onAppear { draft = model.additionalCIDRs }
     }
 }
 
@@ -422,10 +382,8 @@ struct ClimbOverApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("额外直连 CIDR", id: "direct-cidrs") {
-            DirectCIDREditor(model: model)
-        }
-        .defaultSize(width: 540, height: 420)
+        DirectRouteWindow(domains: false, model: model)
+        DirectRouteWindow(domains: true, model: model)
 
         Window("配置文件模板", id: "configuration-templates") {
             ConfigurationTemplateEditor(model: model)
