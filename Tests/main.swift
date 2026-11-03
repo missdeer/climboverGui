@@ -10,6 +10,8 @@ func rejects(_ message: String, _ body: () throws -> Void) {
     catch { print("PASS: " + message) }
 }
 
+try testCommandResources()
+
 let original: [String: Any] = ["server": "example.com", "server_port": 443, "password": "secret", "protocol": "redir", "local_port": 59079, "mode": "tcp_and_udp", "outbound_proxy": "ss://user@example.net:443"]
 let normalized = try Profile.normalize(original)
 require(normalized["local_port"] as? Int == 59097, "PF port must match the runtime listener")

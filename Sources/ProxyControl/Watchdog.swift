@@ -97,7 +97,7 @@ func watch(sessionID: String) {
         } catch is ControlBusy {
             // Start/Stop/Switch owns the lock, including while the system resumes from sleep.
         } catch {
-            recordRecovery("监控会话读取失败，将重试：\(error.localizedDescription)", completed: false)
+            recordRecovery("监控检查或状态更新失败，将重试：\(error.localizedDescription)", completed: false)
         }
         if !finished { Thread.sleep(forTimeInterval: 2) }
     }

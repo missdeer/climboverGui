@@ -26,6 +26,14 @@ enum Command {
         process.environment = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin", "LANG": "en_US.UTF-8"]
         let pipe = Pipe()
         let errorPipe = stdoutOnly ? Pipe() : nil
+        // Process/Pipe can outlive this call in an autorelease pool. Release kernel
+        // descriptors now, including when launching the child throws.
+        defer {
+            try? pipe.fileHandleForReading.close()
+            try? pipe.fileHandleForWriting.close()
+            try? errorPipe?.fileHandleForReading.close()
+            try? errorPipe?.fileHandleForWriting.close()
+        }
         process.standardOutput = pipe
         process.standardError = errorPipe ?? pipe
         process.standardInput = FileHandle.nullDevice
